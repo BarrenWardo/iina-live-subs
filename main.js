@@ -8,6 +8,7 @@ const engine = require("./lib/engine.js");
 const loop = require("./lib/loop.js");
 const stream = require("./lib/stream.js");
 const setup = require("./lib/setup.js");
+const diag = require("./lib/diag.js");
 const subs = require("./lib/subs.js");
 const srtsave = require("./lib/srt-save.js");
 
@@ -233,6 +234,7 @@ function cleanupTmps(list) {
 function resetForNewFile(url) {
   cleanupTmps(state.loop.tmpFiles);
   state.loop = loop.createState();
+  state.lastResult = null;
   state.bins = null;
   state.binScanAt = 0;
   state.modelDl = false;
@@ -299,7 +301,14 @@ function tick() {
     return;
   }
   p.then(function (r) {
-    if (r !== "ok" && r !== "busy" && r !== "not-ready" && r.indexOf("standby") !== 0 && r !== "paused") {
+    // Log terminal/standby transitions (not every tick): silence is why
+    // "no subs" was undebuggable.
+    var quiet = (r === "ok" || r === "busy");
+    if (r !== state.lastResult && !quiet) {
+      try { console.log("ja-en-subs: state -> " + r); } catch (e) {}
+    }
+    state.lastResult = r;
+    if (!quiet && r !== "paused") {
       try { console.log("ja-en-subs: tick -> " + r + " (" + phrase(state.loop.cumSegs.length) + ")"); } catch (e) {}
     }
     if (r === "ok" && pref("saveSrt", false) && srtsave.shouldFlush(state.lastFlush, Date.now())) {
@@ -308,6 +317,36 @@ function tick() {
   }, function (e) {
     try { console.error("ja-en-subs: tick rejected: " + (e && e.message)); } catch (e2) {}
   });
+}
+
+function gatherDiag() {
+  var bins = state.bins || {};
+  var subN = 0;
+  var audN = 0;
+  try { subN = (core.subtitle.tracks || []).length; } catch (e) {}
+  try { audN = (core.audio.tracks || []).length; } catch (e) {}
+  return {
+    url: safeUrlLog(state.url),
+    isStream: state.isStream,
+    streamOk: !!state.streamOk,
+    ffmpeg: bins.ffmpeg || null,
+    whisper: bins.whisper || null,
+    model: bins.model || null,
+    idle: core.status.idle,
+    paused: core.status.paused,
+    pos: core.status.position,
+    speed: core.status.speed,
+    standby: String(standbyReason()),
+    subTracks: subN,
+    audioTracks: audN,
+    busy: state.loop.busy,
+    fails: state.loop.fails,
+    pausedLoop: state.loop.pausedLoop,
+    segs: state.loop.cumSegs.length,
+    lang: pref("sourceLang", "auto"),
+    modelPref: pref("model", "tiny"),
+    chunk: pref("chunkSecs", 5),
+  };
 }
 
 function showOverlay() {
@@ -348,6 +387,14 @@ function start() {
   state.menuItem = toggle;
   menu.addItem(toggle);
   menu.addItem(menu.item("Save EN .srt now", function () { saveSrtNow(true); }));
+  menu.addItem(menu.item("Diagnose JA→EN", function () {
+    var info = gatherDiag();
+    var lines = diag.formatReport(info);
+    for (var i = 0; i < lines.length; i++) {
+      try { console.log("ja-en-subs: " + lines[i]); } catch (e) {}
+    }
+    try { core.osd("JA→EN: " + diag.shortSummary(info) + " (details in Log Viewer)"); } catch (e) {}
+  }));
 
   try { console.log("ja-en-subs: started (player " + state.playerTag + ")"); } catch (e) {}
 }
