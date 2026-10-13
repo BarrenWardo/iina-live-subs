@@ -1,6 +1,6 @@
 {
   "name": "JA→EN Live Subs",
-  "version": "0.1.0",
+  "version": "0.2.7",
   "identifier": "com.github.barrenwardo.ja-en-subs",
   "author": {
     "name": "BarrenWardo",
@@ -25,5 +25,5 @@
     "file-system"
   ],
   "ghRepo": "BarrenWardo/iina-live-subs",
-  "ghVersion": 17
+  "ghVersion": 18
 }

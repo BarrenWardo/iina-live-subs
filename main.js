@@ -41,8 +41,12 @@ function diagReport(info) {
     "diag prefs lang=" + info.lang + " model=" + info.modelPref +
       " chunk=" + info.chunk,
     "diag log=" + (logPath() || "?") + " (open this file to see everything)",
+    "diag plugin=" + PLUGIN_VERSION,
   ];
 }
+
+// Bump with each release so Diagnose always tells us what code runs.
+var PLUGIN_VERSION = "0.2.7-dev";
 
 function diagSummary(info) {
   if (info.standby && info.standby !== "null") return "standby: " + info.standby;
@@ -50,7 +54,11 @@ function diagSummary(info) {
   if (!info.ffmpeg) missing.push("ffmpeg");
   if (!info.whisper) missing.push("whisper-cpp");
   if (!info.model) missing.push("model");
-  if (missing.length > 0) return "setup needed: missing " + missing.join("+") + " @ " + info.dataDir;
+  if (missing.length > 0) {
+    return "setup needed: missing " + missing.join("+") +
+      " (files seen f" + info.f + "w" + info.w + "m" + info.m +
+      (info.blocked ? ", waiting: " + info.blocked : "") + ") @ " + info.dataDir;
+  }
   if (info.pausedLoop) return "paused after slice fails";
   return info.segs + " segments so far";
 }
@@ -275,6 +283,7 @@ function ensureBins() {
   }
   state.bins = { ffmpeg: ffmpeg, whisper: whisper, model: model, modelName: wantModel };
   state.binScanAt = Date.now();
+  state.blockedWhy = null;
   var st = setup.setupState(state.bins);
   if (st !== "ready" && !needDl) {
     osdOncePerMin("setup", "JA→EN: setup needed (binaries/model) — see README");
@@ -483,14 +492,19 @@ function safeGet(fn, fallback) {
 
 function gatherDiag() {
   var bins = state.bins || {};
+  var dir = safeGet(dataDir, "?");
   return {
     url: safeUrlLog(state.url),
     isStream: safeGet(function () { return !!state.isStream; }, false),
     streamOk: !!state.streamOk,
-    dataDir: safeGet(dataDir, "?"),
+    dataDir: dir,
+    blocked: state.blockedWhy || null,
     ffmpeg: bins.ffmpeg || null,
     whisper: bins.whisper || null,
     model: bins.model || null,
+    f: dir === "?" ? "?" : existsQuiet(dir + "/bin/ffmpeg"),
+    w: dir === "?" ? "?" : existsQuiet(dir + "/bin/whisper-cpp"),
+    m: dir === "?" ? "?" : existsQuiet(dir + "/models/ggml-" + safeGet(function () { return pref("model", "tiny"); }, "tiny") + ".bin"),
     idle: safeGet(function () { return core.status.idle; }, "?"),
     paused: safeGet(function () { return core.status.paused; }, "?"),
     pos: safeGet(function () { return core.status.position; }, "?"),
