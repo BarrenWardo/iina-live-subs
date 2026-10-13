@@ -10,6 +10,7 @@ const stream = require("./lib/stream.js");
 const setup = require("./lib/setup.js");
 const subs = require("./lib/subs.js");
 const srtsave = require("./lib/srt-save.js");
+const logfile = require("./lib/logfile.js");
 
 // Ruling: lib/diag.js inlined here instead of required. IINA's require
 // returns null (no throw) when a module fails to evaluate, which made
@@ -27,6 +28,7 @@ function diagReport(info) {
       " pausedLoop=" + info.pausedLoop + " segs=" + info.segs,
     "diag prefs lang=" + info.lang + " model=" + info.modelPref +
       " chunk=" + info.chunk,
+    "diag log=" + (logPath() || "?") + " (open this file to see everything)",
   ];
 }
 
@@ -63,6 +65,8 @@ var state = {
   loop: loop.createState(),
   lastFlush: 0,
   dl: {},
+  log: logfile.create(300),
+  logPath: null,
   bins: null, // {ffmpeg, whisper, model} resolved per file
   url: null,
   isStream: false,
@@ -72,6 +76,48 @@ function pref(key, fallback) {
   return prefs.get(key, fallback);
 }
 
+// Persistent debug log (@data/logs/debug.log) + console mirror.
+// The Log Viewer can filter debug out; the file cannot hide.
+function logPath() {
+  if (!state.logPath) {
+    try {
+      state.logPath = utils.resolvePath("@data/logs/debug.log");
+    } catch (e) {
+      state.logPath = null;
+    }
+  }
+  return state.logPath;
+}
+
+function blog(msg) {
+  try {
+    logfile.push(state.log, msg);
+  } catch (e) {}
+  try {
+    console.log("ja-en-subs: " + msg);
+  } catch (e) {}
+  var p = logPath();
+  if (p) {
+    try {
+      logfile.flush(state.log, function (pa, c) { file.write(pa, c); }, p);
+    } catch (e) {}
+  }
+}
+
+function blogErr(msg) {
+  try {
+    logfile.push(state.log, "ERROR " + msg);
+  } catch (e) {}
+  try {
+    console.error("ja-en-subs: " + msg);
+  } catch (e) {}
+  var p = logPath();
+  if (p) {
+    try {
+      logfile.flush(state.log, function (pa, c) { file.write(pa, c); }, p);
+    } catch (e) {}
+  }
+}
 function osdOncePerMin(kind, msg) {
   var now = Date.now();
   if (!state.osdCount[kind] || now - state.osdCount[kind] > 60000) {
@@ -161,7 +207,7 @@ function queueDownload(kind, url, dest) {
         else state.bins[kind] = p;
         osdOncePerMin("setup", "JA→EN: " + kind + " ready");
       } else {
-        try { console.error("ja-en-subs: download failed: " + kind + " <- " + url); } catch (e) {}
+        blogErr("download failed: " + kind);
         osdOncePerMin("setup", "JA→EN: " + kind + " download failed — retrying");
         state.dlCooldownUntil = Date.now() + 60000;
       }
@@ -214,14 +260,14 @@ function ensureBins() {
   var st = setup.setupState(state.bins);
   if (st !== "ready" && !needDl) {
     osdOncePerMin("setup", "JA→EN: setup needed (binaries/model) — see README");
-    try { console.error("ja-en-subs: setup state " + st); } catch (e) {}
+    blogErr("setup state " + st);
   }
   // Visible breadcrumb: which absolute paths were checked and what exists.
   // Logged only when the missing-set changes (no per-tick spam).
   var have = "f" + existsQuiet(ffmpeg) + "w" + existsQuiet(whisper) + "m" + existsQuiet(model);
   if (st !== "ready" && have !== state.lastHave) {
     state.lastHave = have;
-    try { console.error("ja-en-subs: bins dir=" + dir + " ffmpeg=" + have.charAt(1) + " whisper=" + have.charAt(3) + " model=" + have.charAt(5)); } catch (e) {}
+    blogErr("bins dir=" + dir + " ffmpeg=" + have.charAt(1) + " whisper=" + have.charAt(3) + " model=" + have.charAt(5));
   }
   refreshMenu();
   return st === "ready" ? state.bins : null;
@@ -289,7 +335,7 @@ function makeCtx() {
         } catch (e) {}
         if (!raw) raw = res.stdout; // fallback if sidecar unreadable
         if (res.status !== 0 && !raw) {
-          try { console.error("ja-en-subs: whisper exit " + res.status + ": " + String(res.stderr).slice(-300)); } catch (e) {}
+          blogErr("whisper exit " + res.status + ": " + String(res.stderr).slice(-300));
           return [];
         }
         if (lang === "auto") {
@@ -351,7 +397,7 @@ function resetForNewFile(url) {
     }
   }
   try { overlay.postMessage("clear", {}); } catch (e) {}
-  try { console.log("ja-en-subs: new file: " + safeUrlLog(url) + (state.isStream ? " (stream)" : "")); } catch (e) {}
+  blog("new file: " + safeUrlLog(url) + (state.isStream ? " (stream)" : ""));
 }
 
 function safeUrlLog(url) {
@@ -386,7 +432,7 @@ function tick() {
   try {
     p = loop.tick(state.loop, makeCtx());
   } catch (e) {
-    try { console.error("ja-en-subs: tick threw: " + (e && e.message)); } catch (e2) {}
+    blogErr("tick threw: " + (e && e.message));
     return;
   }
   p.then(function (r) {
@@ -394,17 +440,17 @@ function tick() {
     // "no subs" was undebuggable.
     var quiet = (r === "ok" || r === "busy");
     if (r !== state.lastResult && !quiet) {
-      try { console.log("ja-en-subs: state -> " + r); } catch (e) {}
+      blog("state -> " + r);
     }
     state.lastResult = r;
     if (!quiet && r !== "paused") {
-      try { console.log("ja-en-subs: tick -> " + r + " (" + phrase(state.loop.cumSegs.length) + ")"); } catch (e) {}
+      blog("tick -> " + r + " (" + phrase(state.loop.cumSegs.length) + ")");
     }
     if (r === "ok" && pref("saveSrt", false) && srtsave.shouldFlush(state.lastFlush, Date.now())) {
       saveSrtNow(false);
     }
   }, function (e) {
-    try { console.error("ja-en-subs: tick rejected: " + (e && e.message)); } catch (e2) {}
+    blogErr("tick rejected: " + (e && e.message));
   });
 }
 
@@ -490,14 +536,14 @@ function start() {
       info = gatherDiag();
       var lines = diagReport(info);
       for (var i = 0; i < lines.length; i++) {
-        try { console.log("ja-en-subs: " + lines[i]); } catch (e) {}
+        blog(lines[i]);
       }
       summary = diagSummary(info);
     } catch (e) {
       summary = "diagnose failed: " + (e && e.message);
     }
     try { core.osd("JA→EN: " + summary); } catch (e) {}
-    try { console.error("ja-en-subs: diagnose: " + summary); } catch (e) {}
+    blogErr("diagnose: " + summary);
     // Sticky copy on the video overlay — OSDs vanish too fast to read.
     // Reuse info when available (var hoists it out of the try above).
     try {
@@ -506,7 +552,7 @@ function start() {
     } catch (e) {}
   }));
 
-  try { console.log("ja-en-subs: started (player " + state.playerTag + ")"); } catch (e) {}
+  blog("started (player " + state.playerTag + ")");
 }
 
 start();
