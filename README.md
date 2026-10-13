@@ -5,10 +5,15 @@ Realtime Japanese → English subtitles for IINA on Mac. Fully local:
 
 Spec: `docs/superpowers/specs/2026-10-13-ja-en-subs-design.md`
 
-## Status: v0.1.0 scaffold
+## Status: engine loop wired (Task 5)
 
-Lifecycle + standby wiring only (`main.js`). Engine slice/transcribe is
-marked TODO pending implementation plan.
+## IINA load drill (user-run, no IINA on build machine)
+
+1. `ln -s "$PWD" ~/Library/Application\ Support/com.colliderli.iina/plugins/ja-en-subs.iinaplugin-dev`
+2. Restart IINA → Window → Log Viewer → expect `ja-en-subs: started (player …)`, zero errors.
+3. Plugin menu shows `JA→EN Subs: On`; toggle clears overlay.
+4. Without binaries/model: play JA clip → one OSD `setup needed`, no subs, no error spam.
+5. With binaries/model: EN lines appear; seek flushes; pause freezes.
 
 ## Setup (dev)
 
