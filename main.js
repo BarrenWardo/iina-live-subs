@@ -319,26 +319,31 @@ function tick() {
   });
 }
 
+function safeGet(fn, fallback) {
+  try {
+    var v = fn();
+    return v === undefined ? fallback : v;
+  } catch (e) {
+    return fallback;
+  }
+}
+
 function gatherDiag() {
   var bins = state.bins || {};
-  var subN = 0;
-  var audN = 0;
-  try { subN = (core.subtitle.tracks || []).length; } catch (e) {}
-  try { audN = (core.audio.tracks || []).length; } catch (e) {}
   return {
     url: safeUrlLog(state.url),
-    isStream: state.isStream,
+    isStream: safeGet(function () { return !!state.isStream; }, false),
     streamOk: !!state.streamOk,
     ffmpeg: bins.ffmpeg || null,
     whisper: bins.whisper || null,
     model: bins.model || null,
-    idle: core.status.idle,
-    paused: core.status.paused,
-    pos: core.status.position,
-    speed: core.status.speed,
-    standby: String(standbyReason()),
-    subTracks: subN,
-    audioTracks: audN,
+    idle: safeGet(function () { return core.status.idle; }, "?"),
+    paused: safeGet(function () { return core.status.paused; }, "?"),
+    pos: safeGet(function () { return core.status.position; }, "?"),
+    speed: safeGet(function () { return core.status.speed; }, "?"),
+    standby: safeGet(standbyReason, "?"),
+    subTracks: safeGet(function () { return (core.subtitle.tracks || []).length; }, "?"),
+    audioTracks: safeGet(function () { return (core.audio.tracks || []).length; }, "?"),
     busy: state.loop.busy,
     fails: state.loop.fails,
     pausedLoop: state.loop.pausedLoop,
@@ -388,12 +393,19 @@ function start() {
   menu.addItem(toggle);
   menu.addItem(menu.item("Save EN .srt now", function () { saveSrtNow(true); }));
   menu.addItem(menu.item("Diagnose JA→EN", function () {
-    var info = gatherDiag();
-    var lines = diag.formatReport(info);
-    for (var i = 0; i < lines.length; i++) {
-      try { console.log("ja-en-subs: " + lines[i]); } catch (e) {}
+    var summary;
+    try {
+      var info = gatherDiag();
+      var lines = diag.formatReport(info);
+      for (var i = 0; i < lines.length; i++) {
+        try { console.log("ja-en-subs: " + lines[i]); } catch (e) {}
+      }
+      summary = diag.shortSummary(info);
+    } catch (e) {
+      summary = "diagnose failed: " + (e && e.message);
     }
-    try { core.osd("JA→EN: " + diag.shortSummary(info) + " (details in Log Viewer)"); } catch (e) {}
+    try { core.osd("JA→EN: " + summary); } catch (e) {}
+    try { console.error("ja-en-subs: diagnose: " + summary); } catch (e) {}
   }));
 
   try { console.log("ja-en-subs: started (player " + state.playerTag + ")"); } catch (e) {}
