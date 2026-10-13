@@ -6,6 +6,7 @@ const standby = require("./lib/standby.js");
 const slicer = require("./lib/slicer.js");
 const engine = require("./lib/engine.js");
 const loop = require("./lib/loop.js");
+const stream = require("./lib/stream.js");
 
 var state = {
   enabled: true,
@@ -39,6 +40,7 @@ function tmpWav() {
 // Standby rules live in lib/standby.js (spec §6). Returns reason or null.
 function standbyReason() {
   if (!pref("enabled", true)) return "disabled";
+  if (state.isStream && !state.streamOk) return "unsupported-stream";
   try {
     return standby.check(core.status, core.subtitle.tracks, {
       standbyWhenEnSubs: pref("standbyWhenEnSubs", true),
@@ -95,7 +97,7 @@ function makeCtx() {
     slice: function (wav, start, len) {
       var bins = ensureBins();
       if (!bins) return Promise.resolve(1);
-      var src = state.url;
+      var src = state.isStream ? state.streamUrl : state.url;
       var audioIdx = null;
       try {
         audioIdx = slicer.pickAudioIdx(core.audio.tracks);
@@ -139,6 +141,19 @@ function resetForNewFile(url) {
     state.isStream = core.status.isNetworkResource;
   } catch (e) {
     state.isStream = false;
+  }
+  state.streamUrl = url;
+  state.streamOk = true;
+  if (state.isStream) {
+    try {
+      state.streamUrl = stream.resolveUrl(url, function (n) { return mpv.getString(n); });
+    } catch (e) {
+      state.streamUrl = url;
+    }
+    state.streamOk = stream.isSliceable(state.streamUrl);
+    if (!state.streamOk) {
+      osdOncePerMin("stream", "JA→EN: this stream type is unsupported — standby");
+    }
   }
   try { overlay.postMessage("clear", {}); } catch (e) {}
   try { console.log("ja-en-subs: new file: " + url + (state.isStream ? " (stream)" : "")); } catch (e) {}
