@@ -4,6 +4,7 @@ var engine = require("../lib/engine");
 test("engine: detectLang finds language field", function () {
   assert.strictEqual(engine.detectLang('{"language":"en","transcription":[]}'), "en");
   assert.strictEqual(engine.detectLang('{"detected_language":"ja"}'), "ja");
+  assert.strictEqual(engine.detectLang('{"result":{"language":"en"}}'), "en");
 });
 
 test("engine: detectLang corrupt/missing -> null", function () {
