@@ -7,6 +7,7 @@ const slicer = require("./lib/slicer.js");
 const engine = require("./lib/engine.js");
 const loop = require("./lib/loop.js");
 const stream = require("./lib/stream.js");
+const setup = require("./lib/setup.js");
 
 var state = {
   enabled: true,
@@ -50,36 +51,72 @@ function standbyReason() {
   }
 }
 
-// Task 7 will promote this to lib/setup.js with arch select + download.
-// v1: first hit wins across universal/arm64/x64 names + PATH fallback.
-function resolveBin(name) {
-  var candidates = [name, name + "-arm64", name + "-x64"];
-  for (var i = 0; i < candidates.length; i++) {
-    try {
-      if (utils.fileInPath(candidates[i])) return candidates[i];
-    } catch (e) {}
-  }
-  return null;
+// Binary/model readiness (spec §3). Existence check doubles as PATH check
+// via utils.fileInPath. Ruling: relative "bin/…" base semantics confirmed
+// at first IINA run (README drill); universal2 builds preferred.
+function existsBoth(p) {
+  try {
+    if (file.exists(p)) return true;
+  } catch (e) {}
+  try {
+    if (utils.fileInPath(p)) return true;
+  } catch (e) {}
+  return false;
+}
+
+function refreshMenu() {
+  if (!state.menuItem) return;
+  var st = setup.setupState({
+    ffmpeg: state.bins && state.bins.ffmpeg,
+    whisper: state.bins && state.bins.whisper,
+    model: state.bins && state.bins.model,
+  });
+  var on = pref("enabled", true);
+  state.menuItem.title = st === "ready"
+    ? (on ? "JA→EN Subs: On" : "JA→EN Subs: Off")
+    : "JA→EN Subs: Setup needed";
+  try { menu.forceUpdate(); } catch (e) {}
 }
 
 function ensureBins() {
-  if (state.bins) return state.bins;
-  var ffmpeg = resolveBin("bin/ffmpeg") || (utils.fileInPath("ffmpeg") ? "ffmpeg" : null);
-  var whisper = resolveBin("bin/whisper-cpp");
+  if (state.bins && state.bins.ffmpeg && state.bins.whisper && state.bins.model) return state.bins;
+  var ffmpeg = setup.pickBin(existsBoth, "ffmpeg", true);
+  var whisper = setup.pickBin(existsBoth, "whisper-cpp", false);
   var model = null;
-  if (whisper) {
-    try {
-      var p = engine.modelPath(utils.resolvePath("@data/models"), pref("model", "tiny"));
-      if (file.exists(p)) model = p;
-    } catch (e) {}
-  }
-  if (!ffmpeg || !whisper || !model) {
-    osdOncePerMin("setup", "JA→EN: setup needed (binaries/model) — see README");
-    try { console.error("ja-en-subs: missing " + (!ffmpeg ? "ffmpeg " : "") + (!whisper ? "whisper " : "") + (!model ? "model" : "")); } catch (e) {}
-    return null;
-  }
+  var modelWant = null;
+  try {
+    modelWant = engine.modelPath(utils.resolvePath("@data/models"), pref("model", "tiny"));
+    if (file.exists(modelWant)) model = modelWant;
+  } catch (e) {}
   state.bins = { ffmpeg: ffmpeg, whisper: whisper, model: model };
-  return state.bins;
+  var st = setup.setupState(state.bins);
+  if (st === "need-model" && modelWant && !state.modelDl) {
+    state.modelDl = true;
+    try {
+      var http = iina.http;
+      setup.ensureModel(
+        function (url, dest) { return http.download(url, dest); },
+        function (p) { return file.exists(p); },
+        utils.resolvePath("@data/models"),
+        pref("model", "tiny")
+      ).then(function (p) {
+        state.modelDl = false;
+        if (p) {
+          state.bins.model = p;
+          osdOncePerMin("setup", "JA→EN: model ready");
+        }
+        refreshMenu();
+      });
+      osdOncePerMin("setup", "JA→EN: downloading speech model (once)…");
+    } catch (e) {
+      state.modelDl = false;
+    }
+  } else if (st !== "ready") {
+    osdOncePerMin("setup", "JA→EN: setup needed (binaries/model) — see README");
+    try { console.error("ja-en-subs: setup state " + st); } catch (e) {}
+  }
+  refreshMenu();
+  return st === "ready" ? state.bins : null;
 }
 
 function phrase(n) {
@@ -135,6 +172,7 @@ function makeCtx() {
 function resetForNewFile(url) {
   state.loop = loop.createState();
   state.bins = null;
+  state.modelDl = false;
   state.segCounter = 0;
   state.url = url;
   try {
@@ -198,10 +236,10 @@ function start() {
   var toggle = menu.item("JA→EN Subs: On", function (item) {
     var on = !pref("enabled", true);
     preferences.set("enabled", on);
-    item.title = on ? "JA→EN Subs: On" : "JA→EN Subs: Off";
-    menu.forceUpdate();
+    refreshMenu();
     if (!on) { try { overlay.postMessage("clear", {}); } catch (e) {} }
   }, { selected: true });
+  state.menuItem = toggle;
   menu.addItem(toggle);
 
   try { console.log("ja-en-subs: started (player " + state.playerTag + ")"); } catch (e) {}
