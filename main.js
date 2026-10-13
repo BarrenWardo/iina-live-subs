@@ -131,19 +131,30 @@ function makeCtx() {
     standbyCheck: standbyReason,
     isPaused: function () { return core.status.paused; },
     getPos: function () { return core.status.position; },
-    getChunk: function () { return pref("chunkSecs", 5); },
+    getChunk: function () {
+      var c = Number(pref("chunkSecs", 5));
+      if (!(c >= 2)) return c > 0 && c < 2 ? 2 : 5;
+      if (c > 10) return 10;
+      return c;
+    },
     getSpeed: function () { return core.status.speed || 1; },
+    now: function () { return Date.now(); },
     tmpPath: tmpWav,
-    slice: function (wav, start, len) {
+    slice: function (wav, start, len, slow) {
       var bins = ensureBins();
-      if (!bins) return Promise.resolve(1);
+      if (!bins) return Promise.resolve("not-ready");
       var src = state.isStream ? state.streamUrl : state.url;
       var audioIdx = null;
       try {
-        audioIdx = slicer.pickAudioIdx(core.audio.tracks);
+        audioIdx = state.mapFallback ? null : slicer.pickAudioIdx(core.audio.tracks);
       } catch (e) {}
-      var args = slicer.buildSliceArgs(src, audioIdx, start, len);
-      return slicer.slice(function (b, a) { return utils.exec(b, a); }, bins.ffmpeg, args, wav);
+      var args = slow
+        ? slicer.buildSliceArgsSlow(src, audioIdx, start, len)
+        : slicer.buildSliceArgs(src, audioIdx, start, len);
+      return slicer.slice(function (b, a) { return utils.exec(b, a); }, bins.ffmpeg, args, wav).then(function (st) {
+        if (st !== 0 && audioIdx !== null && !state.mapFallback) state.mapFallback = true;
+        return st;
+      });
     },
     transcribe: function (wav) {
       var bins = ensureBins();
@@ -153,6 +164,10 @@ function makeCtx() {
         if (res.status !== 0) {
           try { console.error("ja-en-subs: whisper exit " + res.status + ": " + String(res.stderr).slice(-300)); } catch (e) {}
           return [];
+        }
+        if (lang === "auto") {
+          var detected = engine.detectLang(res.stdout);
+          if (detected && /^en/i.test(detected)) return [];
         }
         return engine.parseWhisperJson(res.stdout);
       });
@@ -172,10 +187,18 @@ function makeCtx() {
   };
 }
 
+function cleanupTmps(list) {
+  for (var i = 0; i < list.length; i++) {
+    try { file.delete(list[i]); } catch (e) {}
+  }
+}
+
 function resetForNewFile(url) {
+  cleanupTmps(state.loop.tmpFiles);
   state.loop = loop.createState();
   state.bins = null;
   state.modelDl = false;
+  state.mapFallback = false;
   state.lastFlush = 0;
   state.segCounter = 0;
   state.url = url;
@@ -224,13 +247,22 @@ function saveSrtNow(announce) {
 }
 
 function tick() {
-  loop.tick(state.loop, makeCtx()).then(function (r) {
-    if (r !== "ok" && r !== "busy" && r.indexOf("standby") !== 0 && r !== "paused") {
+  var p;
+  try {
+    p = loop.tick(state.loop, makeCtx());
+  } catch (e) {
+    try { console.error("ja-en-subs: tick threw: " + (e && e.message)); } catch (e2) {}
+    return;
+  }
+  p.then(function (r) {
+    if (r !== "ok" && r !== "busy" && r !== "not-ready" && r.indexOf("standby") !== 0 && r !== "paused") {
       try { console.log("ja-en-subs: tick -> " + r + " (" + phrase(state.loop.cumSegs.length) + ")"); } catch (e) {}
     }
     if (r === "ok" && pref("saveSrt", false) && srtsave.shouldFlush(state.lastFlush, Date.now())) {
       saveSrtNow(false);
     }
+  }, function (e) {
+    try { console.error("ja-en-subs: tick rejected: " + (e && e.message)); } catch (e2) {}
   });
 }
 
@@ -252,6 +284,7 @@ function start() {
   event.on("iina.file-loaded", function (url) { resetForNewFile(url); });
   event.on("iina.window-will-close", function () {
     if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    cleanupTmps(state.loop.tmpFiles);
     try { overlay.postMessage("clear", {}); } catch (e) {}
   });
   try {

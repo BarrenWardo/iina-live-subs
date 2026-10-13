@@ -1,6 +1,16 @@
 var fs = require("fs");
 var engine = require("../lib/engine");
 
+test("engine: detectLang finds language field", function () {
+  assert.strictEqual(engine.detectLang('{"language":"en","transcription":[]}'), "en");
+  assert.strictEqual(engine.detectLang('{"detected_language":"ja"}'), "ja");
+});
+
+test("engine: detectLang corrupt/missing -> null", function () {
+  assert.strictEqual(engine.detectLang("junk"), null);
+  assert.strictEqual(engine.detectLang('{"transcription":[]}'), null);
+});
+
 test("engine: args contain --translate and -l ja", function () {
   var args = engine.buildWhisperArgs("/m/ggml-tiny.bin", "/t/a.wav", "ja");
   assert.ok(args.indexOf("--translate") !== -1);

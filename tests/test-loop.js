@@ -8,6 +8,7 @@ function makeCtx(over) {
     pos: 10,
     chunk: 5,
     speed: 1,
+    now: function () { return 0; },
     sliceResult: 0,
     segments: [{ t0: 0, t1: 2, text: "Hello" }],
     standbyCheck: function () { return ctx.standby; },
@@ -82,10 +83,13 @@ test("loop: second tick while busy returns busy", function () {
   });
 });
 
-test("loop: three slice fails pause the loop + osd", function () {
+test("loop: retry then three slow fails pause the loop + osd", function () {
   var ctx = makeCtx({ sliceResult: 1 });
   var st = loop.createState();
-  return loop.tick(st, ctx).then(function () {
+  return loop.tick(st, ctx).then(function (r) {
+    assert.strictEqual(r, "slice-retry");
+    return loop.tick(st, ctx);
+  }).then(function () {
     return loop.tick(st, ctx);
   }).then(function () {
     return loop.tick(st, ctx);
@@ -136,6 +140,117 @@ test("loop: transcribe rejection resets busy", function () {
     assert.strictEqual(r, "error");
     assert.strictEqual(st.busy, false);
   });
+});
+
+test("loop: not-ready slice never counts strikes", function () {
+  var ctx = makeCtx({
+    slice: function () { return Promise.resolve("not-ready"); },
+  });
+  var st = loop.createState();
+  return loop.tick(st, ctx).then(function () {
+    return loop.tick(st, ctx);
+  }).then(function () {
+    return loop.tick(st, ctx);
+  }).then(function (r) {
+    assert.strictEqual(r, "not-ready");
+    assert.strictEqual(st.fails, 0);
+    assert.strictEqual(st.pausedLoop, false);
+    assert.strictEqual(st.busy, false);
+  });
+});
+
+test("loop: first fail arms slow retry without strike", function () {
+  var seen = [];
+  var ctx = makeCtx({
+    slice: function (wav, start, len, slow) {
+      seen.push(!!slow);
+      return Promise.resolve(seen.length === 1 ? 1 : 0);
+    },
+  });
+  var st = loop.createState();
+  return loop.tick(st, ctx).then(function (r) {
+    assert.strictEqual(r, "slice-retry");
+    assert.strictEqual(st.fails, 0);
+    return loop.tick(st, ctx);
+  }).then(function (r) {
+    assert.strictEqual(r, "ok");
+    assert.deepStrictEqual(seen, [false, true]);
+  });
+});
+
+test("loop: strikes count only in slow mode, then pause", function () {
+  var ctx = makeCtx({
+    slice: function () { return Promise.resolve(1); },
+  });
+  var st = loop.createState();
+  return loop.tick(st, ctx).then(function (r) {
+    assert.strictEqual(r, "slice-retry");
+    return loop.tick(st, ctx);
+  }).then(function () {
+    return loop.tick(st, ctx);
+  }).then(function () {
+    return loop.tick(st, ctx);
+  }).then(function (r) {
+    assert.strictEqual(r, "paused-loop");
+  });
+});
+
+test("loop: pause auto-resets after cooldown", function () {
+  var now = 0;
+  var ctx = makeCtx({
+    now: function () { return now; },
+    slice: function () { return Promise.resolve(ctx.sliceResult); },
+  });
+  ctx.sliceResult = 1;
+  var st = loop.createState();
+  // drive to pause: retry + 3 slow fails
+  return loop.tick(st, ctx).then(function () { return loop.tick(st, ctx); })
+    .then(function () { return loop.tick(st, ctx); })
+    .then(function () { return loop.tick(st, ctx); })
+    .then(function (r) {
+      assert.strictEqual(r, "paused-loop");
+      return loop.tick(st, ctx);
+    }).then(function (r) {
+      assert.strictEqual(r, "paused-loop"); // still cooling
+      now += 61000;
+      ctx.sliceResult = 0;
+      return loop.tick(st, ctx);
+    }).then(function (r) {
+      assert.strictEqual(r, "ok");
+      assert.strictEqual(st.pausedLoop, false);
+    });
+});
+
+test("loop: stale flight removes its wav", function () {
+  var resolvers = [];
+  var ctx = makeCtx({
+    transcribe: function () {
+      return new Promise(function (res) { resolvers.push(res); });
+    },
+  });
+  var st = loop.createState();
+  var p = loop.tick(st, ctx);
+  return new Promise(function (res) { setTimeout(res, 0); }).then(function () {
+    loop.notifySeek(st, ctx);
+    resolvers[0]([{ t0: 0, t1: 1, text: "Stale" }]);
+    return p;
+  }).then(function (r) {
+    assert.strictEqual(r, "stale");
+    assert.ok(ctx.calls.some(function (c) { return c[0] === "rm"; }));
+  });
+});
+
+test("loop: failed slice removes partial wav", function () {
+  var ctx = makeCtx({ sliceResult: 1 });
+  var st = loop.createState();
+  return loop.tick(st, ctx).then(function () {
+    assert.ok(ctx.calls.some(function (c) { return c[0] === "rm"; }));
+  });
+});
+
+test("loop: cumSegs capped", function () {
+  var kept = loop.appendCapped([1, 2, 3], [4, 5], 4);
+  assert.deepStrictEqual(kept, [2, 3, 4, 5]);
 });
 
 test("loop: big time jump inside tick flushes", function () {

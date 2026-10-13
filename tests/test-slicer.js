@@ -1,5 +1,11 @@
 var slicer = require("../lib/slicer");
 
+test("slicer: slow builder puts -ss after -i", function () {
+  var args = slicer.buildSliceArgsSlow("file.mkv", 0, 12.5, 5);
+  assert.ok(args.indexOf("-ss") > args.indexOf("-i"));
+  assert.strictEqual(args[args.indexOf("-ss") + 1], "12.5");
+});
+
 test("slicer: -ss precedes -i (fast seek)", function () {
   var args = slicer.buildSliceArgs("file.mkv", 0, 12.5, 5);
   assert.ok(args.indexOf("-ss") !== -1 && args.indexOf("-i") !== -1);
