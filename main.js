@@ -1,6 +1,8 @@
 // JA→EN Live Subs — main entry (runs once per player window).
 // All state below is per-player by design. Do not hoist across instances.
 const { core, event, mpv, overlay, menu, preferences, file, utils, console } = iina;
+const prefs = require("./lib/prefs.js");
+const standby = require("./lib/standby.js");
 
 var state = {
   enabled: true,
@@ -14,12 +16,7 @@ var state = {
 };
 
 function pref(key, fallback) {
-  try {
-    var v = preferences.get(key);
-    return v === undefined || v === null ? fallback : v;
-  } catch (e) {
-    return fallback;
-  }
+  return prefs.get(key, fallback);
 }
 
 function osdOncePerMin(kind, msg) {
@@ -35,21 +32,18 @@ function tmpWav() {
   return "@tmp/jaen-" + state.playerTag + "-" + state.segCounter + ".wav";
 }
 
-// Standby rules (spec §6). Returns reason string or null when active.
+// Standby rules live in lib/standby.js (spec §6). Returns reason or null.
 function standbyReason() {
   if (!pref("enabled", true)) return "disabled";
-  if (core.status.idle) return "idle";
-  if (core.status.position === null || core.status.position === undefined) return "no-position";
+  var reason;
   try {
-    if (pref("standbyWhenEnSubs", true)) {
-      var tracks = core.subtitle.tracks || [];
-      for (var i = 0; i < tracks.length; i++) {
-        var t = tracks[i];
-        if (t.isSelected && t.lang && /^en/i.test(t.lang)) return "en-subs-present";
-      }
-    }
-  } catch (e) {}
-  return null;
+    reason = standby.check(core.status, core.subtitle.tracks, {
+      standbyWhenEnSubs: pref("standbyWhenEnSubs", true),
+    });
+  } catch (e) {
+    return null;
+  }
+  return reason;
 }
 
 function resetForNewFile(url) {
