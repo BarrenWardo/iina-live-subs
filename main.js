@@ -183,7 +183,6 @@ function ensureBins() {
     if (state.bins.modelName === wantModel) return state.bins;
     state.bins.model = null; // model pref changed → re-resolve below
   }
-  if (state.dl.ffmpeg || state.dl.whisper || state.dl.model) return null;
   if (state.dlCooldownUntil && Date.now() < state.dlCooldownUntil) return null;
   var dir = dataDir();
   if (!dir) return null;
@@ -217,8 +216,24 @@ function ensureBins() {
     osdOncePerMin("setup", "JA→EN: setup needed (binaries/model) — see README");
     try { console.error("ja-en-subs: setup state " + st); } catch (e) {}
   }
+  // Visible breadcrumb: which absolute paths were checked and what exists.
+  // Logged only when the missing-set changes (no per-tick spam).
+  var have = "f" + existsQuiet(ffmpeg) + "w" + existsQuiet(whisper) + "m" + existsQuiet(model);
+  if (st !== "ready" && have !== state.lastHave) {
+    state.lastHave = have;
+    try { console.error("ja-en-subs: bins dir=" + dir + " ffmpeg=" + have.charAt(1) + " whisper=" + have.charAt(3) + " model=" + have.charAt(5)); } catch (e) {}
+  }
   refreshMenu();
   return st === "ready" ? state.bins : null;
+}
+
+function existsQuiet(p) {
+  if (!p) return 0;
+  try {
+    return file.exists(p) ? 1 : 0;
+  } catch (e) {
+    return 0;
+  }
 }
 
 function phrase(n) {
@@ -471,6 +486,7 @@ function start() {
     var summary;
     var info = null;
     try {
+      try { ensureBins(); } catch (e) {} // resolve fresh even when idle
       info = gatherDiag();
       var lines = diagReport(info);
       for (var i = 0; i < lines.length; i++) {
