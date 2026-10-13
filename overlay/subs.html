@@ -17,6 +17,11 @@
     text-shadow: 0 1px 3px rgba(0,0,0,.8);
   }
   #subs:empty { display: none; }
+  #subs.diag {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 12px; line-height: 1.5; text-align: left;
+    max-height: 70%; overflow: hidden; white-space: pre-wrap;
+  }
   @media (prefers-color-scheme: light) {
     #subs { background: rgba(0, 0, 0, 0.62); color: #fff; }
   }
@@ -28,14 +33,23 @@
   var box = document.getElementById("subs");
   var hideTimer = null;
   iina.onMessage("subs", function (data) {
+    box.className = "";
     box.textContent = data.text || "";
     if (data.fontSize) box.style.fontSize = data.fontSize + "px";
     if (hideTimer) clearTimeout(hideTimer);
     hideTimer = setTimeout(function () { box.textContent = ""; }, 4000);
   });
   iina.onMessage("clear", function () {
+    box.className = "";
     box.textContent = "";
     if (hideTimer) clearTimeout(hideTimer);
+  });
+  iina.onMessage("diag", function (data) {
+    // Sticky diagnostic report: no auto-hide, survives until next subs/clear.
+    if (hideTimer) clearTimeout(hideTimer);
+    box.className = "diag";
+    var lines = data.lines || [];
+    box.textContent = lines.join("\n");
   });
 </script>
 </body>

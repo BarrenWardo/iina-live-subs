@@ -467,8 +467,9 @@ function start() {
   menu.addItem(menu.item("Save EN .srt now", function () { saveSrtNow(true); }));
   menu.addItem(menu.item("Diagnose JA→EN", function () {
     var summary;
+    var info = null;
     try {
-      var info = gatherDiag();
+      info = gatherDiag();
       var lines = diagReport(info);
       for (var i = 0; i < lines.length; i++) {
         try { console.log("ja-en-subs: " + lines[i]); } catch (e) {}
@@ -479,6 +480,12 @@ function start() {
     }
     try { core.osd("JA→EN: " + summary); } catch (e) {}
     try { console.error("ja-en-subs: diagnose: " + summary); } catch (e) {}
+    // Sticky copy on the video overlay — OSDs vanish too fast to read.
+    // Reuse info when available (var hoists it out of the try above).
+    try {
+      if (typeof info !== "undefined" && info) overlay.postMessage("diag", { lines: diagReport(info) });
+      else overlay.postMessage("diag", { lines: [summary] });
+    } catch (e) {}
   }));
 
   try { console.log("ja-en-subs: started (player " + state.playerTag + ")"); } catch (e) {}
