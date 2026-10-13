@@ -10,7 +10,19 @@ const stream = require("./lib/stream.js");
 const setup = require("./lib/setup.js");
 const subs = require("./lib/subs.js");
 const srtsave = require("./lib/srt-save.js");
-const logfile = require("./lib/logfile.js");
+var logfile = null;
+try {
+  logfile = require("./lib/logfile.js");
+} catch (e) {}
+if (!logfile || !logfile.create) {
+  // IINA require() yields null instead of throwing; never let logging
+  // take down the whole entry. No-op fallback, real logger when present.
+  logfile = {
+    create: function () { return { lines: [], dirty: false, max: 0 }; },
+    push: function () {},
+    flush: function () { return false; },
+  };
+}
 
 // Ruling: lib/diag.js inlined here instead of required. IINA's require
 // returns null (no throw) when a module fails to evaluate, which made
