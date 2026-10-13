@@ -20,6 +20,7 @@ var state = {
   playerTag: Math.random().toString(36).slice(2, 8),
   loop: loop.createState(),
   lastFlush: 0,
+  dl: {},
   bins: null, // {ffmpeg, whisper, model} resolved per file
   url: null,
   isStream: false,
@@ -59,19 +60,10 @@ function standbyReason() {
   }
 }
 
-// Binary/model readiness (spec §3). Existence check doubles as PATH check
-// via utils.fileInPath. Ruling: relative "bin/…" base semantics confirmed
-// at first IINA run (README drill); universal2 builds preferred.
-function existsBoth(p) {
-  try {
-    if (file.exists(p)) return true;
-  } catch (e) {}
-  try {
-    if (utils.fileInPath(p)) return true;
-  } catch (e) {}
-  return false;
-}
-
+// Binary/model readiness (spec §3). Everything resolves to ABSOLUTE
+// @data paths — IINA's parsePath rejects relative bundle paths, so
+// "bin/…" can never execute in-app (bundle bin/ is CLI-testing only).
+// Missing pieces download once from release assets / HF.
 function refreshMenu() {
   if (!state.menuItem) return;
   var st = setup.setupState({
@@ -89,57 +81,80 @@ function refreshMenu() {
   try { menu.forceUpdate(); } catch (e) {}
 }
 
-var BIN_TTL_MS = 30000;
+var BIN_ASSETS = { ffmpeg: "ffmpeg-arm64", whisper: "whisper-cpp-arm64" };
+
+function dataDir() {
+  try {
+    return utils.resolvePath("@data");
+  } catch (e) {
+    return null;
+  }
+}
+
+function queueDownload(kind, url, dest) {
+  if (state.dl[kind]) return;
+  state.dl[kind] = true;
+  try {
+    var http = iina.http;
+    setup.ensureFile(
+      function (u, d) { return http.download(u, d); },
+      function (p) { return file.exists(p); },
+      url, dest
+    ).then(function (p) {
+      state.dl[kind] = false;
+      if (p) {
+        if (kind === "model") state.bins.model = p;
+        else state.bins[kind] = p;
+        osdOncePerMin("setup", "JA→EN: " + kind + " ready");
+      }
+      refreshMenu();
+    });
+    if (kind === "model") osdOncePerMin("setup", "JA→EN: downloading speech model (once)…");
+    else osdOncePerMin("setup", "JA→EN: downloading " + kind + " (once)…");
+  } catch (e) {
+    state.dl[kind] = false;
+  }
+}
 
 function ensureBins() {
-  var wantModel = null;
+  var wantModel = "tiny";
   try {
     wantModel = pref("model", "tiny");
-  } catch (e) {
-    wantModel = "tiny";
-  }
+  } catch (e) {}
   if (state.bins && state.bins.ffmpeg && state.bins.whisper && state.bins.model) {
     if (state.bins.modelName === wantModel) return state.bins;
     state.bins.model = null; // model pref changed → re-resolve below
   }
-  if (state.modelDl) return null; // download in flight; .then() resumes
-  var now = Date.now();
-  if (state.bins && state.binScanAt && now - state.binScanAt < BIN_TTL_MS && !state.bins.ffmpeg) {
-    return null; // negative scan cached; avoid FS probes every tick
-  }
-  var ffmpeg = setup.pickBin(existsBoth, "ffmpeg", true);
-  var whisper = setup.pickBin(existsBoth, "whisper-cpp", false);
+  if (state.dl.ffmpeg || state.dl.whisper || state.dl.model) return null;
+  var dir = dataDir();
+  if (!dir) return null;
+  var ffmpeg = setup.binPath(dir, "ffmpeg");
+  var whisper = setup.binPath(dir, "whisper-cpp");
   var model = null;
-  var modelWant = null;
   try {
-    modelWant = engine.modelPath(utils.resolvePath("@data/models"), pref("model", "tiny"));
-    if (file.exists(modelWant)) model = modelWant;
+    model = engine.modelPath(dir + "/models", wantModel);
   } catch (e) {}
+  var needDl = false;
+  try {
+    if (!file.exists(ffmpeg)) { queueDownload("ffmpeg", setup.binAssetUrl(BIN_ASSETS.ffmpeg), ffmpeg); needDl = true; }
+  } catch (e) { needDl = true; }
+  try {
+    if (!file.exists(whisper)) { queueDownload("whisper", setup.binAssetUrl(BIN_ASSETS.whisper), whisper); needDl = true; }
+  } catch (e) { needDl = true; }
+  try {
+    if (!model || !file.exists(model)) {
+      queueDownload("model", (setup.MODEL_URLS[wantModel] || setup.MODEL_URLS.tiny), engine.modelPath(dir + "/models", wantModel));
+      needDl = true;
+      model = null;
+    }
+  } catch (e) {
+    needDl = true;
+    model = null;
+  }
   state.bins = { ffmpeg: ffmpeg, whisper: whisper, model: model, modelName: wantModel };
   state.binScanAt = Date.now();
   var st = setup.setupState(state.bins);
-  if (st === "need-model" && modelWant && !state.modelDl) {
-    state.modelDl = true;
-    try {
-      var http = iina.http;
-      setup.ensureModel(
-        function (url, dest) { return http.download(url, dest); },
-        function (p) { return file.exists(p); },
-        utils.resolvePath("@data/models"),
-        pref("model", "tiny")
-      ).then(function (p) {
-        state.modelDl = false;
-        if (p) {
-          state.bins.model = p;
-          osdOncePerMin("setup", "JA→EN: model ready");
-        }
-        refreshMenu();
-      });
-      osdOncePerMin("setup", "JA→EN: downloading speech model (once)…");
-    } catch (e) {
-      state.modelDl = false;
-    }
-  } else if (st !== "ready") {
+  if (st !== "ready" && !needDl) {
     osdOncePerMin("setup", "JA→EN: setup needed (binaries/model) — see README");
     try { console.error("ja-en-subs: setup state " + st); } catch (e) {}
   }
@@ -237,7 +252,7 @@ function resetForNewFile(url) {
   state.lastResult = null;
   state.bins = null;
   state.binScanAt = 0;
-  state.modelDl = false;
+  state.dl = {};
   state.mapFallback = false;
   state.lastAid = undefined;
   state.lastFlush = 0;

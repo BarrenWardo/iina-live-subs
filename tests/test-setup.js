@@ -4,27 +4,48 @@ function existsFn(existing) {
   return function (p) { return existing.indexOf(p) !== -1; };
 }
 
-test("setup: universal binary preferred", function () {
-  var p = setup.pickBin(existsFn(["bin/ffmpeg", "bin/ffmpeg-arm64"]), "ffmpeg", false);
-  assert.strictEqual(p, "bin/ffmpeg");
+test("setup: binPath joins data dir", function () {
+  assert.strictEqual(setup.binPath("/data", "ffmpeg"), "/data/bin/ffmpeg");
 });
 
-test("setup: arm64 before x64", function () {
-  var p = setup.pickBin(existsFn(["bin/whisper-cpp-arm64", "bin/whisper-cpp-x64"]), "whisper-cpp", false);
-  assert.strictEqual(p, "bin/whisper-cpp-arm64");
+test("setup: binAssetUrl uses latest stable URL", function () {
+  var u = setup.binAssetUrl("whisper-cpp-arm64");
+  assert.ok(u.indexOf("releases/latest/download/whisper-cpp-arm64") !== -1);
 });
 
-test("setup: none existing -> null", function () {
-  assert.strictEqual(setup.pickBin(existsFn([]), "whisper-cpp", false), null);
+test("setup: existing bin short-circuits (no download)", function () {
+  var downloaded = [];
+  return setup.ensureBin(
+    function () { downloaded.push(1); return Promise.resolve(); },
+    existsFn(["/data/bin/ffmpeg"]),
+    "/data", "ffmpeg", "https://x/ffmpeg"
+  ).then(function (p) {
+    assert.strictEqual(p, "/data/bin/ffmpeg");
+    assert.strictEqual(downloaded.length, 0);
+  });
 });
 
-test("setup: ffmpeg PATH fallback", function () {
-  var p = setup.pickBin(existsFn(["ffmpeg"]), "ffmpeg", true);
-  assert.strictEqual(p, "ffmpeg");
+test("setup: missing bin downloads then resolves", function () {
+  var present = [];
+  var got = [];
+  return setup.ensureBin(
+    function (url, dest) { got.push([url, dest]); present.push(dest); return Promise.resolve(); },
+    function (p) { return present.indexOf(p) !== -1; },
+    "/data", "whisper-cpp-arm64", "https://x/whisper-cpp-arm64"
+  ).then(function (p) {
+    assert.strictEqual(p, "/data/bin/whisper-cpp-arm64");
+    assert.strictEqual(got[0][0], "https://x/whisper-cpp-arm64");
+  });
 });
 
-test("setup: no PATH fallback for whisper", function () {
-  assert.strictEqual(setup.pickBin(existsFn(["whisper-cpp"]), "whisper-cpp", true), null);
+test("setup: failed bin download -> null", function () {
+  return setup.ensureBin(
+    function () { return Promise.reject(new Error("offline")); },
+    existsFn([]),
+    "/data", "ffmpeg", "https://x/ffmpeg"
+  ).then(function (p) {
+    assert.strictEqual(p, null);
+  });
 });
 
 test("setup: model exists short-circuits (no download)", function () {
