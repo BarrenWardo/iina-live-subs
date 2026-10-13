@@ -8,9 +8,47 @@ const engine = require("./lib/engine.js");
 const loop = require("./lib/loop.js");
 const stream = require("./lib/stream.js");
 const setup = require("./lib/setup.js");
-const diag = require("./lib/diag.js");
 const subs = require("./lib/subs.js");
 const srtsave = require("./lib/srt-save.js");
+
+// Ruling: lib/diag.js inlined here instead of required. IINA's require
+// returns null (no throw) when a module fails to evaluate, which made
+// Diagnose die with "null is not an object". Zero deps = zero risk.
+function diagReport(info) {
+  return [
+    "diag url=" + info.url,
+    "diag stream=" + info.isStream + " streamOk=" + info.streamOk,
+    "diag bins ffmpeg=" + info.ffmpeg + " whisper=" + info.whisper + " model=" + info.model,
+    "diag status idle=" + info.idle + " paused=" + info.paused + " pos=" + info.pos +
+      " speed=" + info.speed,
+    "diag standby=" + info.standby + " subs=" + info.subTracks +
+      " audio=" + info.audioTracks,
+    "diag loop busy=" + info.busy + " fails=" + info.fails +
+      " pausedLoop=" + info.pausedLoop + " segs=" + info.segs,
+    "diag prefs lang=" + info.lang + " model=" + info.modelPref +
+      " chunk=" + info.chunk,
+  ];
+}
+
+function diagSummary(info) {
+  if (info.standby && info.standby !== "null") return "standby: " + info.standby;
+  if (!info.ffmpeg || !info.whisper || !info.model) return "setup needed";
+  if (info.pausedLoop) return "paused after slice fails";
+  return info.segs + " segments so far";
+}
+
+// Startup self-check: IINA require() yields null (never throws) on failure.
+// Log any dead module at error level so it can't hide like diag did.
+(function checkLibs() {
+  var missing = [];
+  var libs = { prefs: prefs, standby: standby, slicer: slicer, engine: engine, loop: loop, stream: stream, setup: setup, subs: subs, srtsave: srtsave };
+  for (var k in libs) {
+    if (!libs[k]) missing.push(k);
+  }
+  if (missing.length > 0) {
+    try { console.error("ja-en-subs: dead modules: " + missing.join(",")); } catch (e) {}
+  }
+})();
 
 var state = {
   enabled: true,
@@ -411,11 +449,11 @@ function start() {
     var summary;
     try {
       var info = gatherDiag();
-      var lines = diag.formatReport(info);
+      var lines = diagReport(info);
       for (var i = 0; i < lines.length; i++) {
         try { console.log("ja-en-subs: " + lines[i]); } catch (e) {}
       }
-      summary = diag.shortSummary(info);
+      summary = diagSummary(info);
     } catch (e) {
       summary = "diagnose failed: " + (e && e.message);
     }
