@@ -253,6 +253,58 @@ test("loop: cumSegs capped", function () {
   assert.deepStrictEqual(kept, [2, 3, 4, 5]);
 });
 
+test("loop: consecutive windows overlap 0.5s instead of full rechunk", function () {
+  var starts = [];
+  var ctx = makeCtx({
+    slice: function (wav, start, len, slow) {
+      starts.push(start);
+      return Promise.resolve(0);
+    },
+  });
+  var st = loop.createState();
+  return loop.tick(st, ctx).then(function () {
+    ctx.pos = 11; // advance 1s, no seek jump
+    return loop.tick(st, ctx);
+  }).then(function () {
+    assert.strictEqual(starts[0], 10.2);
+    // winEnd was 15.2 → overlap start 14.7, not 11.2
+    assert.strictEqual(starts[1], 14.7);
+  });
+});
+
+test("loop: seek resets overlap anchor", function () {
+  var starts = [];
+  var ctx = makeCtx({
+    slice: function (wav, start, len, slow) {
+      starts.push(start);
+      return Promise.resolve(0);
+    },
+  });
+  var st = loop.createState();
+  return loop.tick(st, ctx).then(function () {
+    ctx.pos = 60; // jump → flush + fresh anchor
+    return loop.tick(st, ctx);
+  }).then(function () {
+    assert.strictEqual(starts[1], 60.2);
+  });
+});
+
+test("loop: chunk clamped to 2..10, window len capped", function () {
+  var lens = [];
+  var ctx = makeCtx({
+    chunk: 99,
+    speed: 0.25,
+    slice: function (wav, start, len, slow) {
+      lens.push(len);
+      return Promise.resolve(0);
+    },
+  });
+  var st = loop.createState();
+  return loop.tick(st, ctx).then(function () {
+    assert.strictEqual(lens[0], 12); // 10/0.25=40 → capped 12
+  });
+});
+
 test("loop: big time jump inside tick flushes", function () {
   var ctx = makeCtx({});
   var st = loop.createState();

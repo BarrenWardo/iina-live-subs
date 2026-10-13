@@ -75,14 +75,33 @@ function refreshMenu() {
     model: state.bins && state.bins.model,
   });
   var on = pref("enabled", true);
-  state.menuItem.title = st === "ready"
+  var title = st === "ready"
     ? (on ? "JA→EN Subs: On" : "JA→EN Subs: Off")
     : "JA→EN Subs: Setup needed";
+  if (title === state.menuTitle) return;
+  state.menuTitle = title;
+  state.menuItem.title = title;
   try { menu.forceUpdate(); } catch (e) {}
 }
 
+var BIN_TTL_MS = 30000;
+
 function ensureBins() {
-  if (state.bins && state.bins.ffmpeg && state.bins.whisper && state.bins.model) return state.bins;
+  var wantModel = null;
+  try {
+    wantModel = pref("model", "tiny");
+  } catch (e) {
+    wantModel = "tiny";
+  }
+  if (state.bins && state.bins.ffmpeg && state.bins.whisper && state.bins.model) {
+    if (state.bins.modelName === wantModel) return state.bins;
+    state.bins.model = null; // model pref changed → re-resolve below
+  }
+  if (state.modelDl) return null; // download in flight; .then() resumes
+  var now = Date.now();
+  if (state.bins && state.binScanAt && now - state.binScanAt < BIN_TTL_MS && !state.bins.ffmpeg) {
+    return null; // negative scan cached; avoid FS probes every tick
+  }
   var ffmpeg = setup.pickBin(existsBoth, "ffmpeg", true);
   var whisper = setup.pickBin(existsBoth, "whisper-cpp", false);
   var model = null;
@@ -91,7 +110,8 @@ function ensureBins() {
     modelWant = engine.modelPath(utils.resolvePath("@data/models"), pref("model", "tiny"));
     if (file.exists(modelWant)) model = modelWant;
   } catch (e) {}
-  state.bins = { ffmpeg: ffmpeg, whisper: whisper, model: model };
+  state.bins = { ffmpeg: ffmpeg, whisper: whisper, model: model, modelName: wantModel };
+  state.binScanAt = Date.now();
   var st = setup.setupState(state.bins);
   if (st === "need-model" && modelWant && !state.modelDl) {
     state.modelDl = true;
@@ -144,10 +164,18 @@ function makeCtx() {
       var bins = ensureBins();
       if (!bins) return Promise.resolve("not-ready");
       var src = state.isStream ? state.streamUrl : state.url;
-      var audioIdx = null;
+      var aid = null;
       try {
-        audioIdx = state.mapFallback ? null : slicer.pickAudioIdx(core.audio.tracks);
+        var tracks = core.audio.tracks || [];
+        for (var i = 0; i < tracks.length; i++) {
+          if (tracks[i].isSelected) { aid = tracks[i].id; break; }
+        }
       } catch (e) {}
+      if (aid !== state.lastAid) {
+        state.lastAid = aid;
+        state.mapFallback = false; // user switched track → retry real map
+      }
+      var audioIdx = state.mapFallback ? null : aid;
       var args = slow
         ? slicer.buildSliceArgsSlow(src, audioIdx, start, len)
         : slicer.buildSliceArgs(src, audioIdx, start, len);
@@ -161,15 +189,20 @@ function makeCtx() {
       if (!bins) return Promise.resolve([]);
       var lang = pref("sourceLang", "auto");
       return utils.exec(bins.whisper, engine.buildWhisperArgs(bins.model, wav, lang)).then(function (res) {
-        if (res.status !== 0) {
+        var raw = null;
+        try {
+          raw = file.read(engine.jsonOutPath(wav));
+        } catch (e) {}
+        if (!raw) raw = res.stdout; // fallback if sidecar unreadable
+        if (res.status !== 0 && !raw) {
           try { console.error("ja-en-subs: whisper exit " + res.status + ": " + String(res.stderr).slice(-300)); } catch (e) {}
           return [];
         }
         if (lang === "auto") {
-          var detected = engine.detectLang(res.stdout);
+          var detected = engine.detectLang(raw);
           if (detected && /^en/i.test(detected)) return [];
         }
-        return engine.parseWhisperJson(res.stdout);
+        return engine.parseWhisperJson(raw);
       });
     },
     postSubs: function (d) {
@@ -197,8 +230,10 @@ function resetForNewFile(url) {
   cleanupTmps(state.loop.tmpFiles);
   state.loop = loop.createState();
   state.bins = null;
+  state.binScanAt = 0;
   state.modelDl = false;
   state.mapFallback = false;
+  state.lastAid = undefined;
   state.lastFlush = 0;
   state.segCounter = 0;
   state.url = url;
@@ -221,7 +256,11 @@ function resetForNewFile(url) {
     }
   }
   try { overlay.postMessage("clear", {}); } catch (e) {}
-  try { console.log("ja-en-subs: new file: " + url + (state.isStream ? " (stream)" : "")); } catch (e) {}
+  try { console.log("ja-en-subs: new file: " + safeUrlLog(url) + (state.isStream ? " (stream)" : "")); } catch (e) {}
+}
+
+function safeUrlLog(url) {
+  return String(url || "").split("?")[0].slice(0, 160);
 }
 
 function saveSrtNow(announce) {
@@ -247,6 +286,7 @@ function saveSrtNow(announce) {
 }
 
 function tick() {
+  if (state.loop.busy) return; // avoid a ctx allocation per time-pos event
   var p;
   try {
     p = loop.tick(state.loop, makeCtx());

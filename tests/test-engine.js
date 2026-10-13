@@ -11,6 +11,20 @@ test("engine: detectLang corrupt/missing -> null", function () {
   assert.strictEqual(engine.detectLang('{"transcription":[]}'), null);
 });
 
+test("engine: args write json sidecar, no progress/timestamp suppression", function () {
+  var args = engine.buildWhisperArgs("/m/ggml-tiny.bin", "@tmp/a.wav", "ja");
+  assert.ok(args.indexOf("-pp") === -1, "no progress spam (stderr bloat)");
+  assert.ok(args.indexOf("-nt") === -1, "keep timestamps");
+  assert.ok(args.indexOf("-ot") === -1, "no unneeded txt file");
+  var of = args.indexOf("-of");
+  assert.ok(of !== -1, "has -of prefix");
+  assert.strictEqual(args[of + 1], "@tmp/a");
+});
+
+test("engine: jsonOutPath derives sidecar path", function () {
+  assert.strictEqual(engine.jsonOutPath("@tmp/a.wav"), "@tmp/a.json");
+});
+
 test("engine: args contain --translate and -l ja", function () {
   var args = engine.buildWhisperArgs("/m/ggml-tiny.bin", "/t/a.wav", "ja");
   assert.ok(args.indexOf("--translate") !== -1);

@@ -7,6 +7,12 @@ Spec: `docs/superpowers/specs/2026-10-13-ja-en-subs-design.md`
 
 ## Status: engine loop wired (Task 5)
 
+## Efficiency notes
+
+- `utils.exec` is one-shot (no daemons), so whisper.cpp **reloads the model every window**. Cost ≈ 0.5–1s (tiny) per 5s chunk on M1. Windows continue from the previous one with 0.5s overlap (not from live edge), so no audio is retranscribed.
+- Prefer `tiny` for latency, `base`/`small` for quality. If subs lag on your machine, drop to a smaller model before lengthening chunks.
+- Bin scans are cached (30s TTL); menus only rebuild on change; per-tick allocations are nil when busy.
+
 ## IINA acceptance drills (user-run, no IINA on build machine)
 
 Node suite: `node tests/run.js` → 61/61 green (this machine).
