@@ -7,13 +7,25 @@ Spec: `docs/superpowers/specs/2026-10-13-ja-en-subs-design.md`
 
 ## Status: engine loop wired (Task 5)
 
-## IINA load drill (user-run, no IINA on build machine)
+## IINA acceptance drills (user-run, no IINA on build machine)
 
-1. `ln -s "$PWD" ~/Library/Application\ Support/com.colliderli.iina/plugins/ja-en-subs.iinaplugin-dev`
-2. Restart IINA → Window → Log Viewer → expect `ja-en-subs: started (player …)`, zero errors.
-3. Plugin menu shows `JA→EN Subs: On`; toggle clears overlay.
-4. Without binaries/model: play JA clip → one OSD `setup needed`, no subs, no error spam.
-5. With binaries/model: EN lines appear; seek flushes; pause freezes.
+Node suite: `node tests/run.js` → 61/61 green (this machine).
+
+| # | Drill | Expect | Result |
+|---|-------|--------|--------|
+| 1 | Load, no binaries | one `setup needed` OSD, menu `Setup needed`, no spam | TBD |
+| 2 | JA anime 2 min (tiny, M1) | EN lines, p50 lag <2.5s | TBD |
+| 3 | JA drama + news | same as 2 | TBD |
+| 4 | Seek / chapter jump | overlay clears, resumes, no stale lines | TBD |
+| 5 | Pause / resume, 2x speed | frozen line on pause; subs continue at 2x | TBD |
+| 6 | Audio/sub track switch | re-picks map; EN-sub standby engages | TBD |
+| 7 | Two windows | independent subs, no shared state | TBD |
+| 8 | EN-audio clip (auto) | standby, no garbage | TBD |
+| 9 | Silent clip | nothing shown, loop advances | TBD |
+| 10 | Direct-mp4 + HLS stream | live-edge subs, delay <10s | TBD |
+| 11 | YouTube page URL | `unsupported-stream` standby, one OSD | TBD |
+| 12 | 30-min soak | `@tmp` ≤4 segs, `.srt` flushed every 5 min | TBD |
+| 13 | Save EN .srt now | file written + native track loaded | TBD |
 
 ## Setup (dev)
 

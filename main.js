@@ -8,6 +8,8 @@ const engine = require("./lib/engine.js");
 const loop = require("./lib/loop.js");
 const stream = require("./lib/stream.js");
 const setup = require("./lib/setup.js");
+const subs = require("./lib/subs.js");
+const srtsave = require("./lib/srt-save.js");
 
 var state = {
   enabled: true,
@@ -16,6 +18,7 @@ var state = {
   osdCount: {},
   playerTag: Math.random().toString(36).slice(2, 8),
   loop: loop.createState(),
+  lastFlush: 0,
   bins: null, // {ffmpeg, whisper, model} resolved per file
   url: null,
   isStream: false,
@@ -173,6 +176,7 @@ function resetForNewFile(url) {
   state.loop = loop.createState();
   state.bins = null;
   state.modelDl = false;
+  state.lastFlush = 0;
   state.segCounter = 0;
   state.url = url;
   try {
@@ -197,10 +201,35 @@ function resetForNewFile(url) {
   try { console.log("ja-en-subs: new file: " + url + (state.isStream ? " (stream)" : "")); } catch (e) {}
 }
 
+function saveSrtNow(announce) {
+  if (state.loop.cumSegs.length === 0) {
+    if (announce) osdOncePerMin("srt", "JA→EN: nothing transcribed yet");
+    return;
+  }
+  var rel = srtsave.srtPathFor(core.status.title);
+  try {
+    subs.flushSrt(function (p, c) { file.write(p, c); }, rel, subs.toSrt(state.loop.cumSegs));
+    state.lastFlush = Date.now();
+    if (announce) {
+      try {
+        core.subtitle.loadTrack(utils.resolvePath(rel));
+        core.osd("JA→EN: saved + loaded EN track");
+      } catch (e) {
+        core.osd("JA→EN: .srt saved");
+      }
+    }
+  } catch (e) {
+    if (announce) osdOncePerMin("srt", "JA→EN: could not save .srt");
+  }
+}
+
 function tick() {
   loop.tick(state.loop, makeCtx()).then(function (r) {
     if (r !== "ok" && r !== "busy" && r.indexOf("standby") !== 0 && r !== "paused") {
       try { console.log("ja-en-subs: tick -> " + r + " (" + phrase(state.loop.cumSegs.length) + ")"); } catch (e) {}
+    }
+    if (r === "ok" && pref("saveSrt", false) && srtsave.shouldFlush(state.lastFlush, Date.now())) {
+      saveSrtNow(false);
     }
   });
 }
@@ -241,6 +270,7 @@ function start() {
   }, { selected: true });
   state.menuItem = toggle;
   menu.addItem(toggle);
+  menu.addItem(menu.item("Save EN .srt now", function () { saveSrtNow(true); }));
 
   try { console.log("ja-en-subs: started (player " + state.playerTag + ")"); } catch (e) {}
 }
