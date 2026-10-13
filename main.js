@@ -94,6 +94,7 @@ function logPath() {
   if (!state.logPath) {
     try {
       state.logPath = utils.resolvePath("@data/logs/debug.log");
+      ensureParent(state.logPath);
     } catch (e) {
       state.logPath = null;
     }
