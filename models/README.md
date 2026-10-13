@@ -6,7 +6,9 @@ Expected files (ggml format for whisper.cpp):
 - `ggml-base.bin` (~145MB, optional)
 - `ggml-small.bin` (~250MB, optional)
 
-Download: `https://huggingface.co/ggerganov/whisper.cpp` or
-`sh ./models/download-ggml-model.sh tiny` from whisper.cpp releases.
+At runtime the plugin looks in IINA's `@data/models/` (auto-downloaded on
+first play). A copy here is handy for offline CLI testing only, e.g.:
+`./bin/whisper-cpp-arm64 -m models/ggml-tiny.bin -f clip.wav -l auto --translate -oj -of /tmp/out`
+Download: `https://huggingface.co/ggerganov/whisper.cpp`.
 The plugin prefers `@data/models/` at runtime so IINA updates never wipe
-weights; this folder is the dev/bundled fallback.
+weights; this folder is the dev/testing fallback.

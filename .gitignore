@@ -3,3 +3,9 @@ bin/ffmpeg-*
 models/ggml-*.bin
 models/*.pt
 @tmp/
+*.mp4
+*.mkv
+*.avi
+*.m4v
+*.webm
+.DS_Store

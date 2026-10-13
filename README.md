@@ -5,10 +5,33 @@ Realtime Japanese → English subtitles for IINA on Mac. Fully local:
 
 Spec: `docs/superpowers/specs/2026-10-13-ja-en-subs-design.md`
 
-## Status: v0.1.0 scaffold
+## Status: engine loop wired (Task 5)
 
-Lifecycle + standby wiring only (`main.js`). Engine slice/transcribe is
-marked TODO pending implementation plan.
+## Efficiency notes
+
+- `utils.exec` is one-shot (no daemons), so whisper.cpp **reloads the model every window**. Cost ≈ 0.5–1s (tiny) per 5s chunk on M1. Windows continue from the previous one with 0.5s overlap (not from live edge), so no audio is retranscribed.
+- Prefer `tiny` for latency, `base`/`small` for quality. If subs lag on your machine, drop to a smaller model before lengthening chunks.
+- Bin scans are cached (30s TTL); menus only rebuild on change; per-tick allocations are nil when busy.
+
+## IINA acceptance drills (user-run, no IINA on build machine)
+
+Node suite: `node tests/run.js` → 61/61 green (this machine).
+
+| # | Drill | Expect | Result |
+|---|-------|--------|--------|
+| 1 | Load, no binaries | one `setup needed` OSD, menu `Setup needed`, no spam | TBD |
+| 2 | JA anime 2 min (tiny, M1) | EN lines, p50 lag <2.5s | TBD |
+| 3 | JA drama + news | same as 2 | TBD |
+| 4 | Seek / chapter jump | overlay clears, resumes, no stale lines | TBD |
+| 5 | Pause / resume, 2x speed | frozen line on pause; subs continue at 2x | TBD |
+| 6 | Audio/sub track switch | re-picks map; EN-sub standby engages | TBD |
+| 7 | Two windows | independent subs, no shared state | TBD |
+| 8 | EN-audio clip (auto) | standby, no garbage | TBD |
+| 9 | Silent clip | nothing shown, loop advances | TBD |
+| 10 | Direct-mp4 + HLS stream | live-edge subs, delay <10s | TBD |
+| 11 | YouTube page URL | `unsupported-stream` standby, one OSD | TBD |
+| 12 | 30-min soak | `@tmp` ≤4 segs, `.srt` flushed every 5 min | TBD |
+| 13 | Save EN .srt now | file written + native track loaded | TBD |
 
 ## Setup (dev)
 

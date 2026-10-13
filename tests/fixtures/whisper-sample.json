@@ -1,0 +1,5 @@
+{"result": {"language": "en"}, "transcription": [
+  {"timestamps": {"from": "00:00:01,000", "to": "00:00:03,500"}, "offsets": {"from": 1000, "to": 3500}, "text": " Good morning."},
+  {"timestamps": {"from": "00:00:04,000", "to": "00:00:05,000"}, "offsets": {"from": 4000, "to": 5000}, "text": "  "},
+  {"timestamps": {"from": "00:00:06,000", "to": "00:00:07,250"}, "offsets": {"from": 6000, "to": 7250}, "text": "How are you?"}
+]}
