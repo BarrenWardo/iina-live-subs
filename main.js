@@ -126,8 +126,10 @@ function refreshMenu() {
 var BIN_ASSETS = { ffmpeg: "ffmpeg-arm64", whisper: "whisper-cpp-arm64" };
 
 function dataDir() {
+  // NOTE: the trailing slash is load-bearing — IINA's parsePath only
+  // matches "@data/" (bare "@data" is rejected as non-absolute).
   try {
-    return utils.resolvePath("@data");
+    return utils.resolvePath("@data/");
   } catch (e) {
     return null;
   }
