@@ -32,7 +32,11 @@ function diagReport(info) {
 
 function diagSummary(info) {
   if (info.standby && info.standby !== "null") return "standby: " + info.standby;
-  if (!info.ffmpeg || !info.whisper || !info.model) return "setup needed";
+  var missing = [];
+  if (!info.ffmpeg) missing.push("ffmpeg");
+  if (!info.whisper) missing.push("whisper-cpp");
+  if (!info.model) missing.push("model");
+  if (missing.length > 0) return "setup needed: missing " + missing.join("+") + " @ " + info.dataDir;
   if (info.pausedLoop) return "paused after slice fails";
   return info.segs + " segments so far";
 }
@@ -402,6 +406,7 @@ function gatherDiag() {
     url: safeUrlLog(state.url),
     isStream: safeGet(function () { return !!state.isStream; }, false),
     streamOk: !!state.streamOk,
+    dataDir: safeGet(dataDir, "?"),
     ffmpeg: bins.ffmpeg || null,
     whisper: bins.whisper || null,
     model: bins.model || null,
