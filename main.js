@@ -129,9 +129,19 @@ function dataDir() {
   }
 }
 
+function ensureParent(dest) {
+  // http.download/file.write may not create intermediate dirs; best-effort.
+  var i = dest.lastIndexOf("/");
+  if (i <= 0) return;
+  try {
+    file.write(dest.slice(0, i) + "/.keep", "x");
+  } catch (e) {}
+}
+
 function queueDownload(kind, url, dest) {
   if (state.dl[kind]) return;
   state.dl[kind] = true;
+  ensureParent(dest);
   try {
     var http = iina.http;
     setup.ensureFile(
@@ -144,6 +154,10 @@ function queueDownload(kind, url, dest) {
         if (kind === "model") state.bins.model = p;
         else state.bins[kind] = p;
         osdOncePerMin("setup", "JA→EN: " + kind + " ready");
+      } else {
+        try { console.error("ja-en-subs: download failed: " + kind + " <- " + url); } catch (e) {}
+        osdOncePerMin("setup", "JA→EN: " + kind + " download failed — retrying");
+        state.dlCooldownUntil = Date.now() + 60000;
       }
       refreshMenu();
     });
@@ -164,6 +178,7 @@ function ensureBins() {
     state.bins.model = null; // model pref changed → re-resolve below
   }
   if (state.dl.ffmpeg || state.dl.whisper || state.dl.model) return null;
+  if (state.dlCooldownUntil && Date.now() < state.dlCooldownUntil) return null;
   var dir = dataDir();
   if (!dir) return null;
   var ffmpeg = setup.binPath(dir, "ffmpeg");
