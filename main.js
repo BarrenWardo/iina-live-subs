@@ -195,9 +195,14 @@ function dataDir() {
 }
 
 function ensureParent(dest) {
-  // http.download/file.write may not create intermediate dirs; best-effort.
+  // Neither file.write nor http.download creates intermediate dirs, and
+  // JS has no mkdir — so make them via /bin/mkdir (absolute, allowed).
   var i = dest.lastIndexOf("/");
   if (i <= 0) return;
+  var dir = dest.slice(0, i);
+  try {
+    utils.exec("/bin/mkdir", ["-p", dir]);
+  } catch (e) {}
   try {
     file.write(dest.slice(0, i) + "/.keep", "x");
   } catch (e) {}
