@@ -23,5 +23,7 @@
     "video-overlay",
     "network-request",
     "file-system"
-  ]
+  ],
+  "ghRepo": "BarrenWardo/iina-live-subs",
+  "ghVersion": 1
 }
