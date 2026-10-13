@@ -1,12 +1,9 @@
-# `bin/` — native helpers (not in git)
+# `bin/` — native helpers for CLI testing only (not in git)
 
-Place prebuilt binaries here (chmod +x):
+**In IINA these files are never used**: IINA's path API rejects relative
+bundle paths, so the plugin downloads the same binaries once into its
+`@data/bin/` (absolute paths) from the GitHub release. Put files here only
+to run the engine from a terminal.
 
-- `whisper-cpp-arm64`, `whisper-cpp-x64` — from https://github.com/ggerganov/whisper.cpp/releases (Metal/CoreML build for arm64)
-- `ffmpeg-arm64`, `ffmpeg-x64` — static builds, e.g. https://evermeet.cx/ffmpeg/ (arm64) or `brew install ffmpeg` + copy
-
-`main.js` selects `<name>-arm64` vs `<name>-x64` at runtime. If a
-system `ffmpeg` exists in PATH it is used as fallback (`utils.fileInPath`).
-
-First launch after adding binaries: `xattr -d com.apple.quarantine bin/*`
-may be needed once for Gatekeeper.
+- `whisper-cpp-arm64` — built from source (Release + Metal)
+- `ffmpeg-arm64` — static build
