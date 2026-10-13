@@ -46,6 +46,10 @@ function standbyReason() {
   if (!pref("enabled", true)) return "disabled";
   if (state.isStream && !state.streamOk) return "unsupported-stream";
   try {
+    // Player is buffering (cache-starved): stop competing for bandwidth.
+    if (mpv.getFlag("paused-for-cache")) return "buffering";
+  } catch (e) {}
+  try {
     return standby.check(core.status, core.subtitle.tracks, {
       standbyWhenEnSubs: pref("standbyWhenEnSubs", true),
     });
