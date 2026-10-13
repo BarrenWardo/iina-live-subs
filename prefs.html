@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+  <div class="pref-section">
+    <label>
+      <input type="checkbox" data-type="bool" data-pref-key="enabled" />
+      Enable live JA→EN subtitles
+    </label>
+  </div>
+  <div class="pref-section">
+    Source language:
+    <div style="margin-top:2px">
+      <label><input type="radio" name="sourceLang" value="auto" /> Auto-detect</label><br>
+      <label><input type="radio" name="sourceLang" value="ja" /> Japanese (force)</label>
+    </div>
+    <p class="small secondary pref-help">Auto stands by when English audio is detected. Force JA if detection misfires on mixed content.</p>
+  </div>
+  <div class="pref-section">
+    Model:
+    <div style="margin-top:2px">
+      <label><input type="radio" name="model" value="tiny" /> tiny — fastest, rougher</label><br>
+      <label><input type="radio" name="model" value="base" /> base — balanced</label><br>
+      <label><input type="radio" name="model" value="small" /> small — best, needs M1 Pro+</label>
+    </div>
+    <p class="small secondary pref-help">Models download once to the plugin data folder (offline after that).</p>
+  </div>
+  <div class="pref-section">
+    Chunk length (seconds):
+    <div style="margin-top:2px">
+      <input type="number" data-type="int" data-pref-key="chunkSecs" style="width:80px" />
+    </div>
+    <p class="small secondary pref-help">3 = lower latency, 8 = better context. Default 5.</p>
+  </div>
+  <div class="pref-section">
+    Subtitle font size:
+    <div style="margin-top:2px">
+      <input type="number" data-type="int" data-pref-key="fontSize" style="width:80px" />
+    </div>
+  </div>
+  <div class="pref-section">
+    <label>
+      <input type="checkbox" data-type="bool" data-pref-key="standbyWhenEnSubs" />
+      Stand by when an English subtitle track is active
+    </label>
+  </div>
+  <div class="pref-section">
+    <label>
+      <input type="checkbox" data-type="bool" data-pref-key="saveSrt" />
+      Save cumulative English .srt alongside (loadable as a native track)
+    </label>
+    <p class="small secondary pref-help">Streams carry ~6–10s live delay; local files ~2s. YouTube page URLs and DRM are unsupported.</p>
+  </div>
+</body>
+</html>

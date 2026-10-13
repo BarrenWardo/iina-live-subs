@@ -1,0 +1,5 @@
+bin/whisper-cpp-*
+bin/ffmpeg-*
+models/ggml-*.bin
+models/*.pt
+@tmp/

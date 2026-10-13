@@ -1,0 +1,27 @@
+{
+  "name": "JA→EN Live Subs",
+  "version": "0.1.0",
+  "identifier": "com.github.barrenwardo.ja-en-subs",
+  "author": {
+    "name": "BarrenWardo",
+    "email": "barrenwardo@gmail.com"
+  },
+  "description": "Realtime Japanese-to-English subtitles via bundled whisper.cpp (local inference, no network).",
+  "entry": "main.js",
+  "preferencesPage": "prefs.html",
+  "preferenceDefaults": {
+    "enabled": true,
+    "sourceLang": "auto",
+    "model": "tiny",
+    "chunkSecs": 5,
+    "fontSize": 22,
+    "standbyWhenEnSubs": true,
+    "saveSrt": false
+  },
+  "permissions": [
+    "show-osd",
+    "video-overlay",
+    "network-request",
+    "file-system"
+  ]
+}
