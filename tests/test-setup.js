@@ -8,9 +8,9 @@ test("setup: binPath joins data dir", function () {
   assert.strictEqual(setup.binPath("/data", "ffmpeg"), "/data/bin/ffmpeg");
 });
 
-test("setup: binAssetUrl uses latest stable URL", function () {
+test("setup: binAssetUrl uses pinned stable tag", function () {
   var u = setup.binAssetUrl("whisper-cpp-arm64");
-  assert.ok(u.indexOf("releases/latest/download/whisper-cpp-arm64") !== -1);
+  assert.ok(u.indexOf("releases/download/assets-v1/whisper-cpp-arm64") !== -1);
 });
 
 test("setup: existing bin short-circuits (no download)", function () {
