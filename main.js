@@ -252,7 +252,7 @@ function resetForNewFile(url) {
     }
     state.streamOk = stream.isSliceable(state.streamUrl);
     if (!state.streamOk) {
-      osdOncePerMin("stream", "JA→EN: this stream type is unsupported — standby");
+      osdOncePerMin("stream", "JA→EN: page-URL streams are unsupported — standby");
     }
   }
   try { overlay.postMessage("clear", {}); } catch (e) {}

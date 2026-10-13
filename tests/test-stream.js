@@ -21,8 +21,20 @@ test("stream: youtu.be not sliceable", function () {
   assert.strictEqual(stream.isSliceable("https://youtu.be/abc123"), false);
 });
 
-test("stream: bare page url not sliceable", function () {
-  assert.strictEqual(stream.isSliceable("https://example.com/videos/42"), false);
+test("stream: extensionless direct-download url is attempted", function () {
+  assert.strictEqual(stream.isSliceable("https://dl-x01.mypikpak.com/download/?fid=abc&expire=1&sign=2"), true);
+});
+
+test("stream: bare path url is attempted (fail path handles misses)", function () {
+  assert.strictEqual(stream.isSliceable("https://example.com/videos/42"), true);
+});
+
+test("stream: subdomain page blocked", function () {
+  assert.strictEqual(stream.isSliceable("https://m.youtube.com/watch?v=x"), false);
+});
+
+test("stream: non-http url not attempted", function () {
+  assert.strictEqual(stream.isSliceable("/local/file.mp4"), false);
 });
 
 test("stream: prefers resolved mpv url over page url", function () {
